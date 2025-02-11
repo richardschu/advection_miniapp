@@ -6,6 +6,7 @@ advection_solver
 advection_solver_variable
 *vtu
 Makefile
+compile_commands.json
 
 # Prerequisites
 *.d
