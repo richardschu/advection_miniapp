@@ -4,6 +4,7 @@ cmake_install.cmake
 CMakeCache.txt
 advection_solver
 advection_solver_variable
+advection_solver_implicit
 *vtu
 Makefile
 compile_commands.json

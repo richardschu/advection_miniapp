@@ -78,7 +78,7 @@ namespace DGAdvection
   // (consisting of a single line/square/cube) is refined by doubling the
   // number of elements for every increase in number. Thus, the number of
   // elements is given by 2^(dim * n_global_refinements)
-  const unsigned int n_global_refinements = 7;
+  const unsigned int n_global_refinements = 4;
 
   // The time step size is controlled via this parameter as
   // dt = courant_number * min_h / transport_norm
@@ -98,8 +98,7 @@ namespace DGAdvection
   enum class MeshType
   {
     cartesian,
-    deformed_cartesian,
-    inscribed_circle
+    deformed_cartesian
   };
   constexpr MeshType mesh_type = MeshType::cartesian;
 
@@ -277,8 +276,6 @@ namespace DGAdvection
     const unsigned int frequency;
   };
 
-
-
   std::shared_ptr<const Utilities::MPI::Partitioner>
   create_partitioner_multiple(
     const std::shared_ptr<const Utilities::MPI::Partitioner>
@@ -297,8 +294,6 @@ namespace DGAdvection
     return std::make_shared<Utilities::MPI::Partitioner>(
       owned, ghosted, scalar_partitioner->get_mpi_communicator());
   }
-
-
 
   template <int dim, int fe_degree, typename Number = double>
   class CellwiseOperator
@@ -511,56 +506,6 @@ namespace DGAdvection
     const Number                                   time_factor;
   };
 
-
-
-  template <typename Number = double>
-  class CellwisePreconditioner
-  {
-  public:
-    template <int dim>
-    CellwisePreconditioner(const Quadrature<dim> &cell_quadrature)
-    {
-      inverse_quadrature_weight.resize(cell_quadrature.size());
-      for (unsigned int q = 0; q < cell_quadrature.size(); ++q)
-        inverse_quadrature_weight[q] = 1. / cell_quadrature.weight(q);
-    }
-
-    template <int dim>
-    void
-    reinit(const Tensor<2, dim, VectorizedArray<Number>> &jac)
-    {
-      inverse_jacobian_determinant = determinant(jac);
-    }
-
-    void
-    vmult(Vector<Number> &dst, const Vector<Number> &src) const
-    {
-      const unsigned int dofs_per_component = inverse_quadrature_weight.size();
-      const VectorizedArray<Number> *src_ptr =
-        reinterpret_cast<const VectorizedArray<Number> *>(src.data());
-      VectorizedArray<Number> *dst_ptr =
-        reinterpret_cast<VectorizedArray<Number> *>(dst.data());
-      constexpr unsigned int n_lanes = VectorizedArray<Number>::size();
-      (void)n_lanes;
-      AssertDimension(n_lanes * dofs_per_component, dst.size());
-      AssertDimension(n_lanes * dofs_per_component, src.size());
-
-      for (unsigned int q = 0; q < dofs_per_component; ++q)
-        {
-          const VectorizedArray<Number> factor =
-            inverse_quadrature_weight[q] * inverse_jacobian_determinant;
-          VectorizedArray<Number> rhs = src_ptr[q];
-          dst_ptr[q]                  = rhs * factor;
-        }
-    }
-
-  private:
-    std::vector<Number>     inverse_quadrature_weight;
-    VectorizedArray<Number> inverse_jacobian_determinant;
-  };
-
-
-
   template <int dim, int fe_degree, typename Number = double>
   class CellwisePreconditionerFDM
   {
@@ -716,8 +661,6 @@ namespace DGAdvection
     std::array<vcomplex, Utilities::pow(n, dim)> inverse_eigenvalues_for_cell;
     mutable std::array<vcomplex, Utilities::pow(n, dim)> data_array;
   };
-
-
 
   // Implementation of the advection operation
   template <int dim, int fe_degree>
@@ -1048,8 +991,6 @@ namespace DGAdvection
       }
   }
 
-
-
   template <int dim, int fe_degree>
   void
   AdvectionOperation<dim, fe_degree>::local_apply_domain(
@@ -1093,8 +1034,6 @@ namespace DGAdvection
                                dst);
       }
   }
-
-
 
   template <int dim, int fe_degree>
   void
@@ -1153,8 +1092,6 @@ namespace DGAdvection
       }
   }
 
-
-
   template <int dim, int fe_degree>
   void
   AdvectionOperation<dim, fe_degree>::local_apply_boundary_face(
@@ -1204,8 +1141,6 @@ namespace DGAdvection
       }
   }
 
-
-
   template <int dim, int fe_degree>
   void
   AdvectionOperation<dim, fe_degree>::local_rhs_domain(
@@ -1250,8 +1185,6 @@ namespace DGAdvection
                                dst);
       }
   }
-
-
 
   template <int dim, int fe_degree>
   void
@@ -1316,8 +1249,6 @@ namespace DGAdvection
       }
   }
 
-
-
   template <int dim, int fe_degree>
   void
   AdvectionOperation<dim, fe_degree>::local_rhs_boundary_face(
@@ -1370,8 +1301,6 @@ namespace DGAdvection
       }
   }
 
-
-
   template <int dim, int fe_degree>
   void
   AdvectionOperation<dim, fe_degree>::project_initial(
@@ -1397,8 +1326,6 @@ namespace DGAdvection
         phi.set_dof_values(dst);
       }
   }
-
-
 
   template <int dim, int fe_degree>
   Tensor<1, 3>
@@ -1432,8 +1359,6 @@ namespace DGAdvection
       }
     return Utilities::MPI::sum(mass_energy, vec.get_mpi_communicator());
   }
-
-
 
   template <typename VectorType>
   class MyVectorMemory : public VectorMemory<VectorType>
@@ -1475,7 +1400,6 @@ namespace DGAdvection
     std::list<VectorType>                    vectors;
     typename std::list<VectorType>::iterator first_unused;
   };
-
 
   template <int dim, int fe_degree>
   void
@@ -1539,8 +1463,6 @@ namespace DGAdvection
     computing_times[3] += timer.wall_time();
   }
 
-
-
   template <int dim>
   class AdvectionProblem
   {
@@ -1573,8 +1495,6 @@ namespace DGAdvection
     ConditionalOStream pcout;
   };
 
-
-
   template <int dim>
   AdvectionProblem<dim>::AdvectionProblem()
     : mapping(fe_degree)
@@ -1593,8 +1513,6 @@ namespace DGAdvection
       triangulation = std::make_shared<Triangulation<dim>>();
   }
 
-
-
   template <int dim>
   void
   AdvectionProblem<dim>::make_grid()
@@ -1607,115 +1525,49 @@ namespace DGAdvection
     for (unsigned int d = 0; d < dim; ++d)
       p2[d] = 1;
     std::vector<unsigned int> subdivisions(dim, 1);
-    if (mesh_type == MeshType::inscribed_circle)
+
+    GridGenerator::subdivided_hyper_rectangle(*triangulation,
+                                              subdivisions,
+                                              p1,
+                                              p2);
+
+    if (periodic)
       {
-        Triangulation<dim> tria1, tria2;
-        Point<dim>         center;
-        for (unsigned int d = 0; d < dim; ++d)
-          center[d] = 0.5;
-        if (dim == 3)
-          GridGenerator::hyper_shell(
-            tria1, center, 0.2, 0.5 * std::sqrt(dim), 2 * dim);
-        else if (dim == 2)
-          {
-            GridGenerator::hyper_shell(
-              tria1, Point<dim>(), 0.2, 0.5 * std::sqrt(dim), 2 * dim);
-            GridTools::rotate(numbers::PI * 0.25, tria1);
-            GridTools::shift(center, tria1);
-          }
-        else
-          {
-            AssertThrow(false, ExcNotImplemented());
-          }
-        GridGenerator::hyper_ball(tria2, center, 0.2);
-        GridGenerator::merge_triangulations(tria1, tria2, *triangulation);
-        triangulation->reset_all_manifolds();
-        triangulation->set_all_manifold_ids(0);
         for (const auto &cell : triangulation->cell_iterators())
-          {
-            for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
-              {
-                bool face_at_sphere_boundary = true;
-                for (unsigned int v = 0;
-                     v < GeometryInfo<dim - 1>::vertices_per_cell;
-                     ++v)
-                  if (std::abs(cell->face(f)->vertex(v).distance(center) -
-                               0.2) > 1e-12)
-                    face_at_sphere_boundary = false;
-                if (face_at_sphere_boundary)
-                  cell->face(f)->set_all_manifold_ids(1);
-              }
-          }
-        const SphericalManifold<dim> spherical_manifold(center);
-        triangulation->set_manifold(1, spherical_manifold);
-        TransfiniteInterpolationManifold<dim> transfinite_manifold;
-        transfinite_manifold.initialize(*triangulation);
-        triangulation->set_manifold(0, transfinite_manifold);
-
-        if (dim == 2 && periodic)
-          {
-            for (const auto &cell : triangulation->cell_iterators())
-              for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell;
-                   ++f)
-                for (unsigned int d = 0; d < dim; ++d)
-                  if (std::abs(cell->face(f)->center()[d]) < 1e-12)
-                    cell->face(f)->set_all_boundary_ids(2 * d);
-                  else if (std::abs(cell->face(f)->center()[d] - 1.) < 1e-12)
-                    cell->face(f)->set_all_boundary_ids(2 * d + 1);
-            std::vector<GridTools::PeriodicFacePair<
-              typename Triangulation<dim>::cell_iterator>>
-              periodic_faces;
-            for (unsigned int d = 0; d < dim; ++d)
-              GridTools::collect_periodic_faces(
-                *triangulation, 2 * d, 2 * d + 1, d, periodic_faces);
-            triangulation->add_periodicity(periodic_faces);
-          }
+          for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell;
+                ++f)
+            if (cell->at_boundary(f))
+              cell->face(f)->set_all_boundary_ids(f);
+        std::vector<GridTools::PeriodicFacePair<
+          typename Triangulation<dim>::cell_iterator>>
+          periodic_faces;
+        for (unsigned int d = 0; d < dim; ++d)
+          GridTools::collect_periodic_faces(
+            *triangulation, 2 * d, 2 * d + 1, d, periodic_faces);
+        triangulation->add_periodicity(periodic_faces);
       }
-    else
+
+    if (mesh_type == MeshType::deformed_cartesian)
       {
-        GridGenerator::subdivided_hyper_rectangle(*triangulation,
-                                                  subdivisions,
-                                                  p1,
-                                                  p2);
+        DeformedCubeManifold<dim> manifold(0.0, 1.0, 0.12, 2);
+        triangulation->set_all_manifold_ids(1);
+        triangulation->set_manifold(1, manifold);
 
-        if (periodic)
+        std::vector<bool> vertex_touched(triangulation->n_vertices(),
+                                          false);
+
+        for (auto cell : triangulation->active_cell_iterators())
           {
-            for (const auto &cell : triangulation->cell_iterators())
-              for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell;
-                   ++f)
-                if (cell->at_boundary(f))
-                  cell->face(f)->set_all_boundary_ids(f);
-            std::vector<GridTools::PeriodicFacePair<
-              typename Triangulation<dim>::cell_iterator>>
-              periodic_faces;
-            for (unsigned int d = 0; d < dim; ++d)
-              GridTools::collect_periodic_faces(
-                *triangulation, 2 * d, 2 * d + 1, d, periodic_faces);
-            triangulation->add_periodicity(periodic_faces);
-          }
-
-        if (mesh_type == MeshType::deformed_cartesian)
-          {
-            DeformedCubeManifold<dim> manifold(0.0, 1.0, 0.12, 2);
-            triangulation->set_all_manifold_ids(1);
-            triangulation->set_manifold(1, manifold);
-
-            std::vector<bool> vertex_touched(triangulation->n_vertices(),
-                                             false);
-
-            for (auto cell : triangulation->active_cell_iterators())
+            for (unsigned int v = 0;
+                  v < GeometryInfo<dim>::vertices_per_cell;
+                  ++v)
               {
-                for (unsigned int v = 0;
-                     v < GeometryInfo<dim>::vertices_per_cell;
-                     ++v)
+                if (vertex_touched[cell->vertex_index(v)] == false)
                   {
-                    if (vertex_touched[cell->vertex_index(v)] == false)
-                      {
-                        Point<dim> &vertex    = cell->vertex(v);
-                        Point<dim>  new_point = manifold.push_forward(vertex);
-                        vertex                = new_point;
-                        vertex_touched[cell->vertex_index(v)] = true;
-                      }
+                    Point<dim> &vertex    = cell->vertex(v);
+                    Point<dim>  new_point = manifold.push_forward(vertex);
+                    vertex                = new_point;
+                    vertex_touched[cell->vertex_index(v)] = true;
                   }
               }
           }
@@ -1765,8 +1617,6 @@ namespace DGAdvection
             << std::endl;
   }
 
-
-
   template <int dim>
   void
   AdvectionProblem<dim>::output_results(const unsigned int output_number,
@@ -1798,51 +1648,6 @@ namespace DGAdvection
     data_out.write_vtu_in_parallel(filename, MPI_COMM_WORLD);
   }
 
-
-  template <int dim, int fe_degree>
-  class Precondition
-  {
-  public:
-    Precondition(const MatrixFree<dim, double> &data)
-    {
-      data.initialize_dof_vector(inverse_diagonal);
-      FEEvaluation<dim, fe_degree, fe_degree + 1, 1, double> eval(data);
-      for (unsigned int cell = 0; cell < data.n_cell_batches(); ++cell)
-        {
-          eval.reinit(cell);
-          for (unsigned int q = 0; q < eval.n_q_points; ++q)
-            eval.submit_value(1.0, q);
-          eval.integrate(EvaluationFlags::values);
-          for (unsigned int i = 0; i < eval.dofs_per_cell; ++i)
-            eval.begin_dof_values()[i] = 1.0 / eval.begin_dof_values()[i];
-          eval.set_dof_values(inverse_diagonal);
-        }
-    }
-
-    void
-    set_time_step(const double time_step)
-    {
-      this->time_step = time_step;
-    }
-
-    void
-    vmult(LinearAlgebra::distributed::Vector<double>       &dst,
-          const LinearAlgebra::distributed::Vector<double> &src) const
-    {
-      DEAL_II_OPENMP_SIMD_PRAGMA
-      for (unsigned int i = 0; i < src.locally_owned_size(); ++i)
-        {
-          const double val     = src.local_element(i);
-          const double factor  = inverse_diagonal.local_element(i) * time_step;
-          dst.local_element(i) = factor * val;
-        }
-    }
-
-  private:
-    LinearAlgebra::distributed::Vector<double> inverse_diagonal;
-    double                                     time_step;
-  };
-
   template <typename OperatorType>
   class BlockJacobi
   {
@@ -1861,8 +1666,6 @@ namespace DGAdvection
   private:
     const OperatorType &operator_exemplar;
   };
-
-
 
   template <typename OperatorType, typename VectorType>
   std::array<double, 5>
@@ -1912,227 +1715,6 @@ namespace DGAdvection
 
 
 
-  template <typename OperatorType, typename VectorType>
-  std::array<double, 5>
-  compute_least_squares_fit_mgs(OperatorType const            &op,
-                                std::vector<VectorType> const &vectors,
-                                VectorType const              &rhs)
-  {
-    using Number = typename VectorType::value_type;
-    std::vector<VectorType>    tmp(vectors.size());
-    dealii::FullMatrix<double> matrix(vectors.size(), vectors.size());
-    AssertThrow(vectors.size() == 5, ExcNotImplemented());
-    std::array<Number, 5> small_vector = {};
-    unsigned int          i            = 0;
-    for (; i < vectors.size(); ++i)
-      {
-        tmp[i].reinit(vectors[0], true);
-        op.vmult(tmp[i], vectors[i]);
-        matrix(0, i) = tmp[i] * tmp[0];
-        for (unsigned int j = 0; j < i; ++j)
-          matrix(j + 1, i) = tmp[i].add_and_dot(-matrix(j, i) / matrix(j, j),
-                                                tmp[j],
-                                                tmp[j + 1]);
-        if (matrix(i, i) < 1e-12 * matrix(0, 0) or matrix(0, 0) < 1e-30)
-          break;
-        small_vector[i] = tmp[i] * rhs;
-      }
-    // if (i > 0)
-    // std::cout << std::setprecision(8) << matrix(i - 1, i - 1) << "  ";
-    for (unsigned int s = i; s < small_vector.size(); ++s)
-      small_vector[s] = 0.;
-    for (int s = i - 1; s >= 0; --s)
-      {
-        double sum = small_vector[s];
-        for (unsigned int j = s + 1; j < i; ++j)
-          sum -= small_vector[j] * matrix(s, j);
-        small_vector[s] = sum / matrix(s, s);
-      }
-    return small_vector;
-  }
-
-
-
-  template <typename OperatorType, typename VectorType>
-  std::array<double, 5>
-  compute_least_squares_fit_cgs(OperatorType const            &op,
-                                std::vector<VectorType> const &vectors,
-                                VectorType const              &rhs)
-  {
-    using Number = typename VectorType::value_type;
-    std::vector<VectorType>    tmp(vectors.size());
-    dealii::FullMatrix<double> matrix(vectors.size(), vectors.size());
-    AssertThrow(vectors.size() == 5, ExcNotImplemented());
-    std::array<Number, 5> small_vector = {};
-    unsigned int          i            = 0;
-    for (; i < vectors.size(); ++i)
-      {
-        tmp[i].reinit(vectors[0], true);
-        op.vmult(tmp[i], vectors[i]);
-
-        std::array<Number *, 11> vec_ptrs = {};
-        for (unsigned int j = 0; j <= i; ++j)
-          vec_ptrs[j] = tmp[j].begin();
-
-        constexpr unsigned int n_lanes =
-          dealii::VectorizedArray<Number>::size();
-        constexpr unsigned int n_lanes_4 = 4 * n_lanes;
-        const unsigned int     regular_size_4 =
-          (vectors[0].locally_owned_size()) / n_lanes_4 * n_lanes_4;
-        const unsigned int regular_size =
-          (vectors[0].locally_owned_size()) / n_lanes * n_lanes;
-
-        std::array<Number, 10> current_mji;
-
-        // compute inner products in Gram-Schmidt process
-        if (i > 0)
-          {
-            std::array<dealii::VectorizedArray<Number>, 10> local_sums = {};
-
-            unsigned int k = 0;
-            for (; k < regular_size_4; k += n_lanes_4)
-              {
-                dealii::VectorizedArray<Number> v_k_0, v_k_1, v_k_2, v_k_3;
-                v_k_0.load(vec_ptrs[i] + k);
-                v_k_1.load(vec_ptrs[i] + k + n_lanes);
-                v_k_2.load(vec_ptrs[i] + k + 2 * n_lanes);
-                v_k_3.load(vec_ptrs[i] + k + 3 * n_lanes);
-                for (unsigned int j = 0; j < i; ++j)
-                  {
-                    dealii::VectorizedArray<Number> v_j_k, tmp0;
-                    v_j_k.load(vec_ptrs[j] + k);
-                    tmp0 = v_k_0 * v_j_k;
-                    v_j_k.load(vec_ptrs[j] + k + n_lanes);
-                    tmp0 += v_k_1 * v_j_k;
-                    v_j_k.load(vec_ptrs[j] + k + 2 * n_lanes);
-                    tmp0 += v_k_2 * v_j_k;
-                    v_j_k.load(vec_ptrs[j] + k + 3 * n_lanes);
-                    tmp0 += v_k_3 * v_j_k;
-                    local_sums[j] += tmp0;
-                  }
-              }
-            for (; k < regular_size; k += n_lanes)
-              {
-                dealii::VectorizedArray<Number> v_k;
-                v_k.load(vec_ptrs[i] + k);
-                for (unsigned int j = 0; j < i; ++j)
-                  {
-                    dealii::VectorizedArray<Number> v_j_k;
-                    v_j_k.load(vec_ptrs[j] + k);
-                    local_sums[j] += v_k * v_j_k;
-                  }
-              }
-            for (; k < vectors[0].locally_owned_size(); ++k)
-              for (unsigned int j = 0; j < i; ++j)
-                local_sums[j][0] += vec_ptrs[i][k] * vec_ptrs[j][k];
-            std::array<Number, 10> scalar_sums;
-            for (unsigned int j = 0; j < i; ++j)
-              scalar_sums[j] = local_sums[j].sum();
-
-            dealii::Utilities::MPI::sum(
-              dealii::ArrayView<const Number>(scalar_sums.data(), i),
-              vectors[0].get_mpi_communicator(),
-              dealii::ArrayView<Number>(scalar_sums.data(), i));
-            for (unsigned int j = 0; j < i; ++j)
-              current_mji[j] = scalar_sums[j] / matrix(j, j);
-          }
-
-        // Update vector, compute its norm (for normalization in classical
-        // Gram-Schmidt) and multiply with right hand side for right-hand side
-        // of least squares problem
-        dealii::VectorizedArray<Number> local_sum_i = {}, local_sum_rhs = {};
-        unsigned int                    k       = 0;
-        const Number                   *rhs_ptr = rhs.begin();
-        for (; k < regular_size_4; k += n_lanes_4)
-          {
-            dealii::VectorizedArray<Number> v_k_0, v_k_1, v_k_2, v_k_3;
-            v_k_0.load(vec_ptrs[i] + k);
-            v_k_1.load(vec_ptrs[i] + k + n_lanes);
-            v_k_2.load(vec_ptrs[i] + k + 2 * n_lanes);
-            v_k_3.load(vec_ptrs[i] + k + 3 * n_lanes);
-            for (unsigned int j = 0; j < i; ++j)
-              {
-                const Number                    m_ji = current_mji[j];
-                dealii::VectorizedArray<Number> v_j_k;
-                v_j_k.load(vec_ptrs[j] + k);
-                v_k_0 -= m_ji * v_j_k;
-                v_j_k.load(vec_ptrs[j] + k + n_lanes);
-                v_k_1 -= m_ji * v_j_k;
-                v_j_k.load(vec_ptrs[j] + k + 2 * n_lanes);
-                v_k_2 -= m_ji * v_j_k;
-                v_j_k.load(vec_ptrs[j] + k + 3 * n_lanes);
-                v_k_3 -= m_ji * v_j_k;
-              }
-            local_sum_i +=
-              v_k_0 * v_k_0 + v_k_1 * v_k_1 + v_k_2 * v_k_2 + v_k_3 * v_k_3;
-            dealii::VectorizedArray<Number> rhs_k, tmp0;
-            rhs_k.load(rhs_ptr + k);
-            tmp0 = rhs_k * v_k_0;
-            v_k_0.store(vec_ptrs[i] + k);
-            rhs_k.load(rhs_ptr + k + n_lanes);
-            tmp0 += rhs_k * v_k_1;
-            v_k_1.store(vec_ptrs[i] + k + n_lanes);
-            rhs_k.load(rhs_ptr + k + 2 * n_lanes);
-            tmp0 += rhs_k * v_k_2;
-            v_k_2.store(vec_ptrs[i] + k + 2 * n_lanes);
-            rhs_k.load(rhs_ptr + k + 3 * n_lanes);
-            tmp0 += rhs_k * v_k_3;
-            v_k_3.store(vec_ptrs[i] + k + 3 * n_lanes);
-            local_sum_rhs += tmp0;
-          }
-        for (; k < regular_size; k += n_lanes)
-          {
-            dealii::VectorizedArray<Number> v_k;
-            v_k.load(vec_ptrs[i] + k);
-            for (unsigned int j = 0; j < i; ++j)
-              {
-                dealii::VectorizedArray<Number> v_j_k;
-                v_j_k.load(vec_ptrs[j] + k);
-                v_k -= current_mji[j] * v_j_k;
-              }
-            local_sum_i += v_k * v_k;
-            dealii::VectorizedArray<Number> rhs_k;
-            rhs_k.load(rhs_ptr + k);
-            local_sum_rhs += v_k * rhs_k;
-            v_k.store(vec_ptrs[i] + k);
-          }
-        for (; k < vectors[0].locally_owned_size(); ++k)
-          {
-            for (unsigned int j = 0; j < i; ++j)
-              vec_ptrs[i][k] -= current_mji[j] * vec_ptrs[j][k];
-            local_sum_i[0] += vec_ptrs[i][k] * vec_ptrs[i][k];
-            local_sum_rhs[0] += rhs_ptr[k] * vec_ptrs[i][k];
-          }
-        std::array<Number, 2> scalar_sums{
-          {local_sum_i.sum(), local_sum_rhs.sum()}};
-        dealii::Utilities::MPI::sum(
-          dealii::ArrayView<const Number>(scalar_sums.data(), 2),
-          vectors[0].get_mpi_communicator(),
-          dealii::ArrayView<Number>(scalar_sums.data(), 2));
-        for (unsigned int j = 0; j < i; ++j)
-          matrix(j, i) = current_mji[j];
-        matrix(i, i)    = scalar_sums[0];
-        small_vector[i] = scalar_sums[1] / scalar_sums[0];
-
-        if (matrix(i, i) < 1e-12 * matrix(0, 0) or matrix(0, 0) < 1e-30)
-          break;
-      }
-    // if (i > 0)
-    // std::cout << std::setprecision(8) << matrix(i - 1, i - 1) << "  ";
-    for (unsigned int s = i; s < small_vector.size(); ++s)
-      small_vector[s] = 0.;
-    for (int s = i - 1; s >= 0; --s)
-      {
-        double sum = small_vector[s];
-        for (unsigned int j = s + 1; j < i; ++j)
-          sum -= small_vector[j] * matrix(s, j);
-        small_vector[s] = sum;
-      }
-    return small_vector;
-  }
-
-
-
   template <int dim>
   void
   AdvectionProblem<dim>::run()
@@ -2159,10 +1741,6 @@ namespace DGAdvection
     rhs.reinit(solution);
     std::vector<LinearAlgebra::distributed::Vector<Number>> stage_sol(5, rhs);
     std::vector<LinearAlgebra::distributed::Vector<Number>> stage_mv(5, rhs);
-
-    Precondition<dim, fe_degree> precondition_m(
-      advection_operator.get_matrix_free());
-    precondition_m.set_time_step(time_step);
 
     BlockJacobi<AdvectionOperation<dim, fe_degree>> precondition(
       advection_operator);
@@ -2218,31 +1796,16 @@ namespace DGAdvection
         timer.restart();
 
         const double  rhs_norm = rhs.l2_norm();
-        SolverControl control(200, 1e-8 * rhs_norm);
-        SolverControl control_fast(40, 1e-8 * rhs_norm);
+        SolverControl control_fast(200, 1e-8 * rhs_norm);
 
         MyVectorMemory<LinearAlgebra::distributed::Vector<double>> memory;
-        try
-          {
-            using SolverType =
-              SolverFGMRES<LinearAlgebra::distributed::Vector<Number>>;
-            typename SolverType::AdditionalData data;
-            // data.exact_residual = false;
-            SolverType solver(control_fast, memory, data);
+        using SolverType =
+          SolverFGMRES<LinearAlgebra::distributed::Vector<Number>>;
+        typename SolverType::AdditionalData data;
+        // data.exact_residual = false;
+        SolverType solver(control_fast, memory, data);
 
-            solver.solve(advection_operator, stage_sol[0], rhs, precondition);
-          }
-        catch (SolverControl::NoConvergence &)
-          {
-            typename SolverGMRES<
-              LinearAlgebra::distributed::Vector<Number>>::AdditionalData data;
-            data.right_preconditioning = true;
-            data.max_n_tmp_vectors     = 20;
-            SolverGMRES<LinearAlgebra::distributed::Vector<Number>> solver(
-              control, memory, data);
-
-            solver.solve(advection_operator, stage_sol[0], rhs, precondition);
-          }
+        solver.solve(advection_operator, stage_sol[0], rhs, precondition);
 
         advection_operator.update_solution(solution, stage_sol[0]);
 
@@ -2260,7 +1823,7 @@ namespace DGAdvection
             output_results(
               n_output++, advection_operator.compute_mass_and_energy(solution));
             pcout << " n iter "
-                  << control.last_step() + control_fast.last_step() << " "
+                  << control_fast.last_step() << " "
                   << rhs_norm << " " << control_fast.initial_value() << " "
                   << control_fast.last_value();
             for (const double s : project_sol)
