@@ -60,6 +60,8 @@
 #include <iomanip>
 #include <iostream>
 
+#include <pdexa-ext/ginkgo/core/solver/batch_cg.hpp>
+
 
 
 namespace DGAdvection
