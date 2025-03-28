@@ -1421,15 +1421,15 @@ namespace DGAdvection
     const Number factor_time =
       std::cos(numbers::PI * (time + time_step) / FINAL_TIME);
 
-    FEEvaluation<dim, fe_degree, fe_degree + 1, 1, Number> eval(data);
+    std::vector<FEEvaluation<dim, fe_degree, fe_degree + 1, 1, Number>> eval(
+      data.n_cell_batches(), data);
     MyVectorMemory<Vector<double>>                         memory;
     std::vector<Vector<double>>                            local_src(
       data.n_cell_batches(),
-      Vector<double>(eval.dofs_per_cell * VectorizedArray<Number>::size()));
+      Vector<double>(eval.front().dofs_per_cell * VectorizedArray<Number>::size()));
     std::vector<Vector<double>> local_dst(
       data.n_cell_batches(),
-      Vector<double>(eval.dofs_per_cell * VectorizedArray<Number>::size()));
-    eval.reinit(0);
+      Vector<double>(eval.front().dofs_per_cell * VectorizedArray<Number>::size()));
 
     // CellwisePreconditioner<Number> precondition(
     //  data.get_mapping_info().cell_data[0].descriptor[0].quadrature);
@@ -1447,18 +1447,16 @@ namespace DGAdvection
 
     for (unsigned int cell = 0; cell < data.n_cell_batches(); ++cell)
       {
-        eval.reinit(cell);
-        eval.read_dof_values(src);
+        eval[cell].reinit(cell);
+        eval[cell].read_dof_values(src);
         transform_to_collocation<dim, fe_degree>(data.get_shape_info().data[0],
-                                                 eval.begin_dof_values(),
+                                                 eval[cell].begin_dof_values(),
                                                  local_src[cell]);
       }
     for (unsigned int cell = 0; cell < data.n_cell_batches(); ++cell)
       {
-        eval.reinit(cell);
-        eval.read_dof_values(src);
         CellwiseOperator<dim, fe_degree> local_operator(
-          eval.inverse_jacobian(0),
+          eval[cell].inverse_jacobian(0),
           data.get_shape_info().data[0],
           &speeds_cells(cell, 0),
           normal_speeds_faces[cell],
@@ -1470,7 +1468,7 @@ namespace DGAdvection
           eigenvectors,
           inverse_eigenvectors,
           eigenvalues,
-          determinant(eval.inverse_jacobian(0)),
+          determinant(eval[cell].inverse_jacobian(0)),
           scaled_cell_velocity[cell] * factor_time,
           1. / time_step);
         gmres.solve(local_operator,
@@ -1480,13 +1478,11 @@ namespace DGAdvection
       }
     for (unsigned int cell = 0; cell < data.n_cell_batches(); ++cell)
       {
-        eval.reinit(cell);
-        eval.read_dof_values(src);
         transform_from_collocation<dim, fe_degree>(
           data.get_shape_info().data[0],
           local_dst[cell],
-          eval.begin_dof_values());
-        eval.set_dof_values(dst);
+          eval[cell].begin_dof_values());
+        eval[cell].set_dof_values(dst);
       }
     computing_times[3] += timer.wall_time();
   }
