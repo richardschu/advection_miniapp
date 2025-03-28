@@ -55,11 +55,11 @@
 #include <deal.II/numerics/solution_transfer.h>
 #include <deal.II/numerics/vector_tools.h>
 
+#include <pdexa-ext/ginkgo/core/solver/batch_cg.hpp>
+
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-
-#include <pdexa-ext/ginkgo/core/solver/batch_cg.hpp>
 
 
 
@@ -443,60 +443,6 @@ namespace DGAdvection
         eval.template gradients<2, false, true>(gradients[2], dst_ptr);
     }
 
-    void
-    transform_to_collocation(const VectorizedArray<Number> *src_ptr,
-                             Vector<Number>                &dst) const
-    {
-      internal::EvaluatorTensorProduct<internal::evaluate_evenodd,
-                                       dim,
-                                       fe_degree + 1,
-                                       fe_degree + 1,
-                                       VectorizedArray<Number>,
-                                       Number>
-                               evaluator(AlignedVector<Number>(),
-                  AlignedVector<Number>(),
-                  shape.inverse_shape_values_eo);
-      VectorizedArray<Number> *dst_ptr =
-        reinterpret_cast<VectorizedArray<Number> *>(dst.data());
-
-      const VectorizedArray<Number> *in  = src_ptr;
-      VectorizedArray<Number>       *out = dst_ptr;
-      // Need to select 'apply' method with hessian slot because values
-      // assume symmetries that do not exist in the inverse shapes
-      evaluator.template hessians<0, true, false>(in, out);
-      if (dim > 1)
-        evaluator.template hessians<1, true, false>(out, out);
-      if (dim > 2)
-        evaluator.template hessians<2, true, false>(out, out);
-    }
-
-    void
-    transform_from_collocation(const Vector<Number>    &src,
-                               VectorizedArray<Number> *dst_ptr) const
-    {
-      internal::EvaluatorTensorProduct<internal::evaluate_evenodd,
-                                       dim,
-                                       fe_degree + 1,
-                                       fe_degree + 1,
-                                       VectorizedArray<Number>,
-                                       Number>
-                                     evaluator(AlignedVector<Number>(),
-                  AlignedVector<Number>(),
-                  shape.inverse_shape_values_eo);
-      const VectorizedArray<Number> *src_ptr =
-        reinterpret_cast<const VectorizedArray<Number> *>(src.data());
-
-      const VectorizedArray<Number> *in  = src_ptr;
-      VectorizedArray<Number>       *out = dst_ptr;
-      // Need to select 'apply' method with hessian slot because values
-      // assume symmetries that do not exist in the inverse shapes
-      evaluator.template hessians<0, false, false>(in, out);
-      if (dim > 1)
-        evaluator.template hessians<1, false, false>(out, out);
-      if (dim > 2)
-        evaluator.template hessians<2, false, false>(out, out);
-    }
-
   private:
     const Tensor<2, dim, VectorizedArray<Number>>                     jac;
     const internal::MatrixFreeFunctions::UnivariateShapeData<Number> &shape;
@@ -663,6 +609,68 @@ namespace DGAdvection
     std::array<vcomplex, Utilities::pow(n, dim)> inverse_eigenvalues_for_cell;
     mutable std::array<vcomplex, Utilities::pow(n, dim)> data_array;
   };
+
+
+  template <int dim, int fe_degree, typename Number>
+  void
+  transform_to_collocation(
+    const internal::MatrixFreeFunctions::UnivariateShapeData<Number> &shape,
+    const VectorizedArray<Number>                                    *src_ptr,
+    Vector<Number>                                                   &dst)
+  {
+    internal::EvaluatorTensorProduct<internal::evaluate_evenodd,
+                                     dim,
+                                     fe_degree + 1,
+                                     fe_degree + 1,
+                                     VectorizedArray<Number>,
+                                     Number>
+                             evaluator(AlignedVector<Number>(),
+                AlignedVector<Number>(),
+                shape.inverse_shape_values_eo);
+    VectorizedArray<Number> *dst_ptr =
+      reinterpret_cast<VectorizedArray<Number> *>(dst.data());
+
+    const VectorizedArray<Number> *in  = src_ptr;
+    VectorizedArray<Number>       *out = dst_ptr;
+    // Need to select 'apply' method with hessian slot because values
+    // assume symmetries that do not exist in the inverse shapes
+    evaluator.template hessians<0, true, false>(in, out);
+    if (dim > 1)
+      evaluator.template hessians<1, true, false>(out, out);
+    if (dim > 2)
+      evaluator.template hessians<2, true, false>(out, out);
+  }
+
+  template <int dim, int fe_degree, typename Number>
+  void
+  transform_from_collocation(
+    const internal::MatrixFreeFunctions::UnivariateShapeData<Number> &shape,
+    const Vector<Number>                                             &src,
+    VectorizedArray<Number>                                          *dst_ptr)
+  {
+    internal::EvaluatorTensorProduct<internal::evaluate_evenodd,
+                                     dim,
+                                     fe_degree + 1,
+                                     fe_degree + 1,
+                                     VectorizedArray<Number>,
+                                     Number>
+                                   evaluator(AlignedVector<Number>(),
+                AlignedVector<Number>(),
+                shape.inverse_shape_values_eo);
+    const VectorizedArray<Number> *src_ptr =
+      reinterpret_cast<const VectorizedArray<Number> *>(src.data());
+
+    const VectorizedArray<Number> *in  = src_ptr;
+    VectorizedArray<Number>       *out = dst_ptr;
+    // Need to select 'apply' method with hessian slot because values
+    // assume symmetries that do not exist in the inverse shapes
+    evaluator.template hessians<0, false, false>(in, out);
+    if (dim > 1)
+      evaluator.template hessians<1, false, false>(out, out);
+    if (dim > 2)
+      evaluator.template hessians<2, false, false>(out, out);
+  }
+
 
   // Implementation of the advection operation
   template <int dim, int fe_degree>
@@ -1454,12 +1462,13 @@ namespace DGAdvection
           determinant(eval.inverse_jacobian(0)),
           scaled_cell_velocity[cell] * factor_time,
           1. / time_step);
-        local_operator.transform_to_collocation(eval.begin_dof_values(),
-                                                local_src);
+        transform_to_collocation<dim, fe_degree>(data.get_shape_info().data[0],
+                                                 eval.begin_dof_values(),
+                                                 local_src);
         gmres.solve(local_operator, local_dst, local_src, precondition);
         // precondition.vmult(local_dst, local_src);
-        local_operator.transform_from_collocation(local_dst,
-                                                  eval.begin_dof_values());
+        transform_from_collocation<dim, fe_degree>(
+          data.get_shape_info().data[0], local_dst, eval.begin_dof_values());
         eval.set_dof_values(dst);
       }
     computing_times[3] += timer.wall_time();
@@ -1536,8 +1545,7 @@ namespace DGAdvection
     if (periodic)
       {
         for (const auto &cell : triangulation->cell_iterators())
-          for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell;
-                ++f)
+          for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
             if (cell->at_boundary(f))
               cell->face(f)->set_all_boundary_ids(f);
         std::vector<GridTools::PeriodicFacePair<
@@ -1555,14 +1563,12 @@ namespace DGAdvection
         triangulation->set_all_manifold_ids(1);
         triangulation->set_manifold(1, manifold);
 
-        std::vector<bool> vertex_touched(triangulation->n_vertices(),
-                                          false);
+        std::vector<bool> vertex_touched(triangulation->n_vertices(), false);
 
         for (auto cell : triangulation->active_cell_iterators())
           {
-            for (unsigned int v = 0;
-                  v < GeometryInfo<dim>::vertices_per_cell;
-                  ++v)
+            for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+                 ++v)
               {
                 if (vertex_touched[cell->vertex_index(v)] == false)
                   {
@@ -1824,9 +1830,8 @@ namespace DGAdvection
           {
             output_results(
               n_output++, advection_operator.compute_mass_and_energy(solution));
-            pcout << " n iter "
-                  << control_fast.last_step() << " "
-                  << rhs_norm << " " << control_fast.initial_value() << " "
+            pcout << " n iter " << control_fast.last_step() << " " << rhs_norm
+                  << " " << control_fast.initial_value() << " "
                   << control_fast.last_value();
             for (const double s : project_sol)
               pcout << " " << s;
