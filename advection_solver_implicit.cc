@@ -1423,9 +1423,12 @@ namespace DGAdvection
 
     FEEvaluation<dim, fe_degree, fe_degree + 1, 1, Number> eval(data);
     MyVectorMemory<Vector<double>>                         memory;
-    Vector<double> local_src(eval.dofs_per_cell *
-                             VectorizedArray<Number>::size());
-    Vector<double> local_dst(local_src);
+    std::vector<Vector<double>>                            local_src(
+      data.n_cell_batches(),
+      Vector<double>(eval.dofs_per_cell * VectorizedArray<Number>::size()));
+    std::vector<Vector<double>> local_dst(
+      data.n_cell_batches(),
+      Vector<double>(eval.dofs_per_cell * VectorizedArray<Number>::size()));
     eval.reinit(0);
 
     // CellwisePreconditioner<Number> precondition(
@@ -1446,6 +1449,14 @@ namespace DGAdvection
       {
         eval.reinit(cell);
         eval.read_dof_values(src);
+        transform_to_collocation<dim, fe_degree>(data.get_shape_info().data[0],
+                                                 eval.begin_dof_values(),
+                                                 local_src[cell]);
+      }
+    for (unsigned int cell = 0; cell < data.n_cell_batches(); ++cell)
+      {
+        eval.reinit(cell);
+        eval.read_dof_values(src);
         CellwiseOperator<dim, fe_degree> local_operator(
           eval.inverse_jacobian(0),
           data.get_shape_info().data[0],
@@ -1462,13 +1473,19 @@ namespace DGAdvection
           determinant(eval.inverse_jacobian(0)),
           scaled_cell_velocity[cell] * factor_time,
           1. / time_step);
-        transform_to_collocation<dim, fe_degree>(data.get_shape_info().data[0],
-                                                 eval.begin_dof_values(),
-                                                 local_src);
-        gmres.solve(local_operator, local_dst, local_src, precondition);
-        // precondition.vmult(local_dst, local_src);
+        gmres.solve(local_operator,
+                    local_dst[cell],
+                    local_src[cell],
+                    precondition);
+      }
+    for (unsigned int cell = 0; cell < data.n_cell_batches(); ++cell)
+      {
+        eval.reinit(cell);
+        eval.read_dof_values(src);
         transform_from_collocation<dim, fe_degree>(
-          data.get_shape_info().data[0], local_dst, eval.begin_dof_values());
+          data.get_shape_info().data[0],
+          local_dst[cell],
+          eval.begin_dof_values());
         eval.set_dof_values(dst);
       }
     computing_times[3] += timer.wall_time();
